@@ -1,0 +1,3 @@
+cloud_name='dc4jg149d',
+api_key='661425913527792',
+api_secret='v_fzwDxZqrpMocM07-WrEPfkLMI'

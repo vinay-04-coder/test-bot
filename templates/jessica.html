@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modern Avatar Chat</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/loaders/GLTFLoader.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Arial', sans-serif; background: #f5f5f5; color: #333; }
+        canvas { display: block; }
+        .chat-container {
+            position: fixed;
+            right: 20px;
+            top: 20px;
+            width: 300px;
+            height: 70vh;
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            backdrop-filter: blur(10px);
+            z-index: 1000;
+        }
+        .chat-log {
+            flex: 1;
+            padding: 15px;
+            overflow-y: auto;
+        }
+        .task-list {
+            padding: 15px;
+            display: none;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .task-item {
+            padding: 10px;
+            background: #e9ecef;
+            border-radius: 10px;
+        }
+        .message {
+            margin: 10px 0;
+            padding: 10px 15px;
+            border-radius: 15px;
+            max-width: 80%;
+            display: block;
+        }
+        .user-message {
+            background: #007bff;
+            color: #fff;
+            margin-left: auto;
+        }
+        .bot-message {
+            background: #e9ecef;
+            color: #333;
+        }
+        .controls {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            z-index: 1000;
+        }
+        .mic-btn, .task-btn {
+            padding: 20px;
+            border-radius: 50%;
+            background: #007bff;
+            border: none;
+            cursor: pointer;
+            color: #fff;
+        }
+        .mic-btn.listening {
+            background: #0056b3;
+        }
+        .status-indicator {
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            background: #28a745;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-log" id="chatLog"></div>
+        <div class="task-list" id="taskList"></div>
+    </div>
+    <div class="controls">
+        <div class="status-indicator" id="status"></div>
+        <button class="mic-btn" onclick="startListening()">🎤</button>
+        <button class="task-btn" onclick="startTaskManager()">🕒 Tasks</button>
+    </div>
+
+    <script>
+        let scene, camera, renderer, avatar, mixer;
+        let recognition, lipSyncInterval;
+        let voicesLoaded = false;
+        let femaleVoice = null;
+
+        function preloadVoices() {
+            const synth = window.speechSynthesis;
+            const voices = synth.getVoices();
+            if (voices.length > 0) {
+                femaleVoice = voices.find(voice => voice.name.includes("Female")) || voices[0];
+                voicesLoaded = true;
+            } else {
+                setTimeout(preloadVoices, 100);
+            }
+        }
+
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 1.5, 1.5);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            document.body.appendChild(renderer.domElement);
+
+            const ambientLight = new THREE.AmbientLight(0x404040, 1.2);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+            directionalLight.position.set(5, 5, 5);
+            scene.add(directionalLight);
+
+            const loader = new THREE.TextureLoader();
+            loader.load("https://static.vecteezy.com/system/resources/previews/005/425/418/non_2x/3d-office-minimalist-room-with-wooden-design-interior-free-photo.jpg", function(texture) {
+                scene.background = texture;
+            });
+
+            new THREE.GLTFLoader().load(
+                "https://models.readyplayer.me/67b85f245a602d19be6767c6.glb",
+                (gltf) => {
+                    avatar = gltf.scene;
+                    avatar.scale.set(2, 2, 2);
+                    avatar.position.set(0, -1.5, 0);
+                    scene.add(avatar);
+                    mixer = new THREE.AnimationMixer(avatar);
+                }
+            );
+
+            window.addEventListener('resize', onWindowResize);
+            animate();
+            preloadVoices();
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if (mixer) mixer.update(0.016);
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function startListening(callback) {
+            try {
+                updateUIState('listening');
+                window.speechSynthesis.cancel();
+                stopLipSync();
+                if (!recognition) {
+                    recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+                    recognition.lang = "en-US";
+                    recognition.continuous = false;
+                    recognition.interimResults = false;
+                }
+                
+                recognition.onresult = (event) => {
+                    const text = event.results[0][0].transcript.toLowerCase();
+                    console.log("Recognized:", text);
+                    if (callback) {
+                        callback(text);
+                    } else {
+                        if (text.includes("view tasks") || text.includes("view task")) {
+                            handleViewTasks();
+                        } else if (text.includes("delete task")) {
+                            handleDeleteTask();
+                        } else {
+                            fetchChatbotResponse(text); // Handles "add task" via /chat
+                        }
+                    }
+                };
+                
+                recognition.onend = () => updateUIState('idle');
+                recognition.onerror = (event) => {
+                    console.error("Recognition error:", event.error);
+                    updateUIState('idle');
+                    if (callback) callback("");
+                };
+                recognition.start();
+            } catch (error) {
+                console.error("Listening error:", error);
+                updateUIState('idle');
+                if (callback) callback("");
+            }
+        }
+
+        async function fetchChatbotResponse(text) {
+            addMessage(text, 'user');
+            updateUIState('processing');
+            try {
+                const response = await fetch("/chat", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ message: text })
+                });
+                const data = await response.json();
+                updateUIState('responding');
+                addMessage(data.response, 'bot');
+                if (data.speak) await speak(data.response);
+            } catch (error) {
+                addMessage("Sorry, something went wrong.", 'bot');
+                await speak("Sorry, something went wrong.");
+            }
+            updateUIState('idle');
+        }
+
+        function addMessage(text, sender) {
+            const chatLog = document.getElementById('chatLog');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}-message`;
+            messageDiv.textContent = text;
+            chatLog.appendChild(messageDiv);
+            chatLog.scrollTop = chatLog.scrollHeight;
+        }
+
+        function updateUIState(state) {
+            const micBtn = document.querySelector('.mic-btn');
+            const status = document.querySelector('#status');
+            switch(state) {
+                case 'listening':
+                    micBtn.classList.add('listening');
+                    status.style.opacity = '1';
+                    status.style.background = '#28a745';
+                    break;
+                case 'processing':
+                    status.style.background = '#ffc107';
+                    break;
+                case 'responding':
+                    status.style.background = '#28a745';
+                    break;
+                default:
+                    micBtn.classList.remove('listening');
+                    status.style.opacity = '0';
+            }
+        }
+
+        function speak(text) {
+            return new Promise((resolve) => {
+                const utterance = new SpeechSynthesisUtterance(text);
+                if (voicesLoaded && femaleVoice) utterance.voice = femaleVoice;
+                
+                utterance.onstart = () => {
+                    console.log("Speech started:", text);
+                    startLipSync();
+                };
+                utterance.onend = () => {
+                    console.log("Speech ended:", text);
+                    stopLipSync();
+                    resolve();
+                };
+                utterance.onerror = (event) => {
+                    console.error("Speech error:", event.error);
+                    stopLipSync();
+                    resolve();
+                };
+
+                window.speechSynthesis.speak(utterance);
+
+                setTimeout(() => {
+                    if (window.speechSynthesis.speaking) {
+                        console.warn("Speech timed out, cancelling:", text);
+                        window.speechSynthesis.cancel();
+                        stopLipSync();
+                        resolve();
+                    }
+                }, 15000);
+            });
+        }
+
+        function startLipSync() {
+            if (lipSyncInterval) clearInterval(lipSyncInterval);
+            lipSyncInterval = setInterval(() => {
+                if (avatar) {
+                    avatar.traverse(child => {
+                        if (child.morphTargetInfluences) {
+                            child.morphTargetInfluences[0] = Math.random() * 0.5;
+                        }
+                    });
+                }
+            }, 100);
+        }
+
+        function stopLipSync() {
+            if (lipSyncInterval) {
+                clearInterval(lipSyncInterval);
+                lipSyncInterval = null;
+                if (avatar) {
+                    avatar.traverse(child => {
+                        if (child.morphTargetInfluences) child.morphTargetInfluences[0] = 0;
+                    });
+                }
+            }
+        }
+
+        let currentTaskOperation = null;
+        let currentTaskData = {};
+
+        function startTaskManager() {
+            toggleTaskView(false);
+            speak("Do you want to add, view, or delete a task?").then(() => {
+                startListening(response => {
+                    const lowerResponse = response.toLowerCase();
+                    if (lowerResponse.includes("add")) {
+                        handleAddTask();
+                    } else if (lowerResponse.includes("view")) {
+                        handleViewTasks();
+                    } else if (lowerResponse.includes("delete")) {
+                        handleDeleteTask();
+                    } else {
+                        speak("Please say add, view, or delete.").then(startTaskManager);
+                    }
+                });
+            });
+        }
+
+        function handleAddTask() {
+            currentTaskOperation = "add";
+            speak("Please tell me the task name and time, like 'Meeting at 2:30 PM' or 'Call in 5 minutes'.").then(() => {
+                startListening(taskInput => {
+                    if (!taskInput) {
+                        speak("I didn't hear you. Please try again.").then(handleAddTask);
+                        return;
+                    }
+                    addMessage(taskInput, 'user');
+                    fetchChatbotResponse(`add task ${taskInput}`); // Send to /chat endpoint
+                    resetTaskState();
+                });
+            });
+        }
+
+        function handleViewTasks() {
+            currentTaskOperation = "view";
+            fetch("/get-tasks")
+                .then(response => {
+                    if (!response.ok) throw new Error("Network response was not ok");
+                    return response.json();
+                })
+                .then(data => {
+                    if (!data.success || data.tasks.length === 0) {
+                        addMessage("You have no tasks.", 'bot');
+                        speak("You have no tasks.").then(resetTaskState);
+                        return;
+                    }
+                    console.log("Fetched tasks:", data.tasks);
+                    
+                    const tasks = data.tasks.map(t => `${t.title} at ${t.time} (${t.status})`);
+                    const fullTaskList = tasks.join(", ");
+                    addMessage(`Your tasks: ${fullTaskList}`, 'bot');
+                    console.log("Tasks to speak:", fullTaskList);
+
+                    const chunkSize = 5;
+                    const chunks = [];
+                    for (let i = 0; i < tasks.length; i += chunkSize) {
+                        chunks.push(tasks.slice(i, i + chunkSize).join(", "));
+                    }
+                    console.log("Speech chunks:", chunks);
+
+                    let speakPromise = Promise.resolve();
+                    chunks.forEach((chunk, index) => {
+                        speakPromise = speakPromise.then(() => {
+                            console.log(`Speaking chunk ${index + 1}/${chunks.length}: ${chunk}`);
+                            return speak(`Here are your tasks: ${chunk}`);
+                        });
+                    });
+
+                    speakPromise.then(() => {
+                        console.log("All tasks spoken, displaying tasks");
+                        displayTasks(data.tasks);
+                        resetTaskState();
+                    }).catch(error => {
+                        console.error("Error during speech:", error);
+                        addMessage("Error speaking tasks.", 'bot');
+                        resetTaskState();
+                    });
+                })
+                .catch(error => {
+                    console.error("Fetch error:", error);
+                    addMessage(`Error fetching tasks: ${error.message}`, 'bot');
+                    speak("Error fetching tasks.").then(resetTaskState);
+                });
+        }
+
+        function handleDeleteTask() {
+            currentTaskOperation = "delete";
+            fetch("/get-tasks")
+                .then(response => {
+                    if (!response.ok) throw new Error("Network response was not ok");
+                    return response.json();
+                })
+                .then(data => {
+                    if (!data.success || data.tasks.length === 0) {
+                        addMessage("No tasks to delete.", 'bot');
+                        speak("You have no tasks to delete.");
+                        resetTaskState();
+                        return;
+                    }
+                    const tasks = data.tasks.map(t => t.title).join(", ");
+                    currentTaskData.availableTasks = data.tasks;
+                    speak(`Which task to delete? Your tasks are: ${tasks}`).then(() => {
+                        startListening(taskToDelete => {
+                            if (!taskToDelete) {
+                                speak("I didn't hear you. Please try again.").then(handleDeleteTask);
+                                return;
+                            }
+                            const task = currentTaskData.availableTasks.find(t => t.title.toLowerCase().includes(taskToDelete.toLowerCase()));
+                            if (!task) {
+                                addMessage(`Task "${taskToDelete}" not found.`, 'bot');
+                                speak(`I couldn't find "${taskToDelete}". Please try again.`);
+                                return handleDeleteTask();
+                            }
+                            speak(`Are you sure you want to delete "${task.title}"? Say yes or no.`).then(() => {
+                                startListening(confirmation => {
+                                    if (!confirmation) {
+                                        speak("I didn't hear you. Please try again.").then(() => handleDeleteTask());
+                                        return;
+                                    }
+                                    if (confirmation.toLowerCase().includes("yes")) {
+                                        addMessage(`Attempting to delete "${task.title}"...`, 'user');
+                                        fetch("/delete-task", {
+                                            method: "POST",
+                                            headers: { "Content-Type": "application/json" },
+                                            body: JSON.stringify({ taskId: task.id })
+                                        })
+                                        .then(response => {
+                                            if (!response.ok) throw new Error("Failed to delete task");
+                                            return response.json();
+                                        })
+                                        .then(data => {
+                                            if (data.success) {
+                                                addMessage(`Task "${task.title}" deleted successfully.`, 'bot');
+                                                speak(`Task "${task.title}" deleted successfully.`);
+                                            } else {
+                                                addMessage(`Error: ${data.error}`, 'bot');
+                                                speak(`Error deleting task: ${data.error}`);
+                                            }
+                                            resetTaskState();
+                                        })
+                                        .catch(error => {
+                                            addMessage(`Error deleting task: ${error.message}`, 'bot');
+                                            speak("There was an error deleting the task.");
+                                            resetTaskState();
+                                        });
+                                    } else {
+                                        addMessage("Task deletion cancelled.", 'bot');
+                                        speak("Task deletion cancelled.");
+                                        resetTaskState();
+                                    }
+                                });
+                            });
+                        });
+                    });
+                })
+                .catch(error => {
+                    addMessage(`Error fetching tasks: ${error.message}`, 'bot');
+                    speak("Error fetching tasks.");
+                    resetTaskState();
+                });
+        }
+
+        function displayTasks(tasks) {
+            const taskList = document.getElementById('taskList');
+            const chatLog = document.getElementById('chatLog');
+            taskList.innerHTML = '';
+            tasks.forEach(task => {
+                const taskDiv = document.createElement('div');
+                taskDiv.className = 'task-item';
+                taskDiv.textContent = `${task.title} - ${task.time} (${task.status})`;
+                taskList.appendChild(taskDiv);
+            });
+            toggleTaskView(true);
+        }
+
+        function toggleTaskView(show) {
+            const taskList = document.getElementById('taskList');
+            const chatLog = document.getElementById('chatLog');
+            taskList.style.display = show ? 'flex' : 'none';
+            chatLog.style.display = show ? 'none' : 'block';
+        }
+
+        function resetTaskState() {
+            currentTaskOperation = null;
+            currentTaskData = {};
+            toggleTaskView(false);
+        }
+
+        function checkTaskReminders() {
+            fetch("/get-tasks")
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.tasks.length > 0) {
+                        const now = new Date();
+                        const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+                        data.tasks.forEach(task => {
+                            if (task.time === currentTime && task.status === "pending") {
+                                const reminderMsg = `Reminder: It's time for "${task.title}"!`;
+                                addMessage(reminderMsg, 'bot');
+                                speak(reminderMsg);
+                            }
+                        });
+                    }
+                })
+                .catch(error => console.error("Error checking tasks:", error));
+        }
+    
+        setInterval(checkTaskReminders, 30000); // Check every 30 seconds
+
+        init();
+    </script>
+</body>
+</html>

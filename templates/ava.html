@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modern Avatar Chat</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/loaders/GLTFLoader.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Arial', sans-serif; background: #f5f5f5; color: #333; }
+        canvas { display: block; }
+        #detect-sign-btn {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background-color: #007bff;
+            border: none;
+            box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.2);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            color: white;
+            transition: background-color 0.3s ease;
+            position: fixed;
+            bottom: 0px;
+            left: calc(50% + 66px); /* Positions it right next to the mic button */
+        }
+        
+        #detect-sign-btn:hover {
+            background-color: #0056b3;
+        }
+        
+        .chat-container {
+            position: fixed;
+            right: 20px;
+            top: 20px;
+            width: 300px;
+            height: 70vh;
+            background: rgba(255, 255, 255, 0.3); 
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            backdrop-filter: blur(10px);
+        }
+        .chat-log { flex: 1; padding: 15px; overflow-y: auto; }
+        .message { margin: 10px 0; padding: 10px 15px; border-radius: 15px; max-width: 80%; }
+        .user-message { background: #007bff; color: #fff; margin-left: auto; }
+        .bot-message { background: #e9ecef; color: #333; }
+        .controls {
+            position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 15px; align-items: center;
+        }
+        .mic-btn { padding: 20px; border-radius: 50%; background: #007bff; border: none; cursor: pointer; color: #fff; }
+        .mic-btn.listening { background: #0056b3; }
+        .status-indicator { width: 15px; height: 15px; border-radius: 50%; background: #28a745; opacity: 0; transition: opacity 0.3s ease; }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-log" id="chatLog"></div>
+    </div>
+    <div class="controls">
+        <div class="status-indicator" id="status"></div>
+        <button class="mic-btn" onclick="startListening()">🎤</button>
+        <button id="detect-sign-btn">👋🏻</button>
+
+    </div>
+
+    <script>
+        let scene, camera, renderer, avatar, mixer;
+        let recognition, lipSyncInterval, mouthIndex = -1;
+
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 1.5, 1.5);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            document.body.appendChild(renderer.domElement);
+
+            const ambientLight = new THREE.AmbientLight(0x404040, 1.2);
+            scene.add(ambientLight);
+
+            const spotLight = new THREE.SpotLight(0xffffff, 2, 10, Math.PI / 4, 0.5);
+            spotLight.position.set(2, 3, 3);
+            spotLight.castShadow = true;
+            scene.add(spotLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+            directionalLight.position.set(5, 5, 5);
+            directionalLight.castShadow = true;
+            scene.add(directionalLight);
+
+            const loader = new THREE.TextureLoader();
+            loader.load("https://static.vecteezy.com/system/resources/previews/005/425/418/non_2x/3d-office-minimalist-room-with-wooden-design-interior-free-photo.jpg", function(texture) {
+                scene.background = texture;
+            });
+
+            new THREE.GLTFLoader().load(
+                "https://models.readyplayer.me/67e10f66e7aa1f5caf672464.glb",
+                (gltf) => {
+                    avatar = gltf.scene;
+                    avatar.scale.set(2, 2, 2);
+                    avatar.position.set(0, -1.5, 0);
+                    scene.add(avatar);
+                    mixer = new THREE.AnimationMixer(avatar);
+
+                    avatar.traverse(child => {
+                        if (child.morphTargetDictionary && child.morphTargetInfluences) {
+                            const targetName = Object.keys(child.morphTargetDictionary).find(name =>
+                                name.toLowerCase().includes("mouth") || name.toLowerCase().includes("jaw")
+                            );
+                            if (targetName) mouthIndex = child.morphTargetDictionary[targetName];
+                        }
+                    });
+                }
+            );
+
+            window.addEventListener('resize', onWindowResize);
+            animate();
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if (mixer) mixer.update(0.016);
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        async function detectSign() {
+            try {
+                const response = await fetch("/detect_sign", { method: "POST" });
+                const data = await response.json();
+
+                if (data.speak) {
+                    speak(data.response);
+                } else if (data.sign) {
+                    addMessage(data.sign, 'user');
+
+                    fetch("/chatbot-response", { 
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ message: data.sign })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        addMessage(data.response, 'bot'); 
+                        speak(data.response); 
+                    })
+                    .catch(error => console.error("Error:", error));
+                }
+
+            } catch (error) {
+                console.error("Error detecting sign:", error);
+            }
+        }
+
+        function addMessage(text, sender) {
+            const chatLog = document.getElementById('chatLog');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}-message`;
+            messageDiv.textContent = text;
+            chatLog.appendChild(messageDiv);
+            chatLog.scrollTop = chatLog.scrollHeight;
+        }
+
+        function speak(text) {
+            return new Promise((resolve) => {
+                const synth = window.speechSynthesis;
+                const utterance = new SpeechSynthesisUtterance(text);
+        
+                function setVoice() {
+                    const voices = synth.getVoices();
+                    if (voices.length === 0) {
+                        setTimeout(setVoice, 100);
+                        return;
+                    }
+        
+                    // Select a female voice (preferring ones commonly found on different OS)
+                    const femaleVoice = voices.find(voice =>
+                        voice.name.includes("Female") ||
+                        voice.name.includes("Emma") ||
+                        voice.name.includes("Samantha") ||  // Common on macOS
+                        voice.name.includes("Google UK English Female") ||  // Chrome-based voices
+                        voice.name.includes("Microsoft Zira") // Windows TTS
+                    );
+        
+                    if (femaleVoice) {
+                        utterance.voice = femaleVoice;
+                    }
+        
+                    synth.speak(utterance);
+                }
+        
+                utterance.onstart = () => {
+                    if (avatar && mouthIndex !== -1) {
+                        lipSyncInterval = setInterval(() => {
+                            avatar.traverse(child => {
+                                if (child.morphTargetInfluences) {
+                                    child.morphTargetInfluences[mouthIndex] = Math.random() * 0.5 + 0.3;
+                                }
+                            });
+                        }, 100);
+                    }
+                };
+        
+                utterance.onend = () => {
+                    if (lipSyncInterval) clearInterval(lipSyncInterval);
+                    avatar.traverse(child => {
+                        if (child.morphTargetInfluences && mouthIndex !== -1) {
+                            child.morphTargetInfluences[mouthIndex] = 0;
+                        }
+                    });
+                    resolve();
+                };
+        
+                setVoice();
+            });
+        }
+        
+
+        document.getElementById("detect-sign-btn").addEventListener("click", function() {
+            detectSign();
+        });
+
+        function startListening() {
+            try {
+                updateUIState('listening');
+                if (!recognition) {
+                    recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+                    recognition.lang = "en-US";
+                    recognition.continuous = false;
+                    recognition.onresult = (event) => {
+                        const text = event.results[0][0].transcript;
+                        fetchChatbotResponse(text);
+                    };
+                    recognition.onend = () => updateUIState('idle');
+                }
+                recognition.start();
+            } catch (error) {
+                console.error("Speech recognition error:", error);
+            }
+        }
+
+        async function fetchChatbotResponse(text) {
+            addMessage(text, 'user');
+            updateUIState('processing');
+
+            try {
+                const response = await fetch("http://127.0.0.1:5000/chat", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ message: text, language: "English" })
+                });
+                const data = await response.json();
+                updateUIState('responding');
+                addMessage(data.response, 'bot');
+                speak(data.response);
+            } catch (error) {
+                console.error("Fetch error:", error);
+            }
+        }
+
+        function updateUIState(state) {
+            const micBtn = document.querySelector('.mic-btn');
+            const status = document.querySelector('#status');
+
+            switch(state) {
+                case 'listening':
+                    micBtn.classList.add('listening');
+                    status.style.opacity = '1';
+                    break;
+                case 'processing':
+                    status.style.background = '#ffc107';
+                    break;
+                case 'responding':
+                    status.style.background = '#28a745';
+                    break;
+                default:
+                    micBtn.classList.remove('listening');
+                    status.style.opacity = '0';
+            }
+        }
+
+        init();
+
+    </script>
+</body>
+</html>

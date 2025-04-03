@@ -1,0 +1,1984 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modern Avatar Chat with Spotify Player</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/loaders/GLTFLoader.js"></script>
+    <style>
+        /* CSS remains unchanged */
+        body { margin: 0; overflow: hidden; font-family: 'Arial', sans-serif; background: #f5f5f5; color: #fff; }
+        canvas { display: block; }
+        #clear-chat-btn, #chat-history-btn {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background-color: #007bff;
+            border: none;
+            box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.2);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            color: white;
+            transition: background-color 0.3s ease;
+            position: fixed;
+        }
+        #clear-chat-btn { right: 20px; top: calc(70vh + 30px); }
+        #chat-history-btn { right: 90px; top: calc(70vh + 30px); }
+        #clear-chat-btn:hover { background-color: rgb(239, 16, 13); }
+        #chat-history-btn:hover { background-color: rgb(40, 167, 69); }
+        #clear-chat-btn::after, #chat-history-btn::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 70px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            white-space: nowrap;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+        }
+        #clear-chat-btn:hover::after, #chat-history-btn:hover::after {
+            opacity: 1;
+        }
+        .chat-container {
+            position: fixed;
+            right: 20px;
+            top: 20px;
+            width: 300px;
+            height: 70vh;
+            background: rgba(255, 255, 255, 0.3); 
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            backdrop-filter: blur(10px);
+        }
+        .chat-log { flex: 1; padding: 15px; overflow-y: auto; }
+        .message { margin: 10px 0; padding: 10px 15px; border-radius: 15px; max-width: 80%; }
+        .user-message { background: #007bff; color: #fff; margin-left: auto; }
+        .bot-message { background: #e9ecef; color: #333; }
+        .bot-message a { color: #007bff; text-decoration: underline; }
+        .bot-message a:hover { color: #0056b3; }
+        .controls {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+        .mic-btn {
+            padding: 20px;
+            border-radius: 50%;
+            background: #007bff;
+            border: none;
+            cursor: pointer;
+            color: #fff;
+        }
+        .mic-btn.listening { background: #0056b3; }
+        .mic-btn.stopping { background: #dc3545; }
+        .status-indicator {
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            background: #28a745;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .media-player {
+            position: fixed;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 450px;
+            background: linear-gradient(305deg, #dc3545, #9109ecfc);
+            border-radius: 15px;
+            padding: 15px;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+            display: none;
+            backdrop-filter: blur(12px);
+            z-index: 10;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .media-player .song-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .media-player #songThumbnail {
+            width: 50px;
+            height: 50px;
+            border-radius: 8px;
+            object-fit: cover;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            order: 1;
+        }
+        .media-player #currentSong {
+            font-size: 14px;
+            font-weight: 500;
+            color: #fff;
+            order: 2;
+            flex: 1;
+        }
+        .media-player .progress-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .media-player .progress-container span {
+            font-size: 12px;
+            color: #fff;
+        }
+        .media-player #progressBar {
+            flex: 1;
+            height: 5px;
+            background: #000000;
+            border-radius: 5px;
+            appearance: none;
+            outline: none;
+            cursor: pointer;
+        }
+        .media-player #progressBar::-webkit-slider-thumb {
+            appearance: none;
+            width: 12px;
+            height: 12px;
+            background: #9109ecfc;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        .media-player #progressBar::-moz-range-thumb {
+            width: 12px;
+            height: 12px;
+            background: #9109ecfc;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        .media-player .player-controls {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 10px;
+        }
+        .media-player button {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            color: #000000;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+        .media-player button:hover {
+            background: #f5f5f5;
+            transform: scale(1.1);
+        }
+        .media-player button:active {
+            transform: scale(0.95);
+        }
+        .media-player .volume-control {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            margin-top: 10px;
+        }
+        .media-player .volume-control input[type="range"] {
+            width: 100px;
+            height: 5px;
+            background: #000000;
+            border-radius: 5px;
+            appearance: none;
+            outline: none;
+            cursor: pointer;
+        }
+        .media-player .volume-control input[type="range"]::-webkit-slider-thumb {
+            appearance: none;
+            width: 12px;
+            height: 12px;
+            background: #9109ecfc;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        .media-player .volume-control input[type="range"]::-moz-range-thumb {
+            width: 12px;
+            height: 12px;
+            background: #9109ecfc;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        .song-options {
+            width: 100%;
+            margin-top: 10px;
+        }
+        .song-option:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        .song-option:active {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        .stopwatch-container {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            transform: none;
+            width: 300px;
+            background: linear-gradient(305deg, #28a745, #17a2b8);
+            border-radius: 15px;
+            padding: 10px;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+            display: none;
+            backdrop-filter: blur(12px);
+            z-index: 10;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .stopwatch-display {
+            font-size: 24px;
+            font-weight: bold;
+            color: #fff;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        .stopwatch-controls {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+        }
+        .stopwatch-controls button {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            border-radius: 5px;
+            padding: 5px 10px;
+            color: #fff;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+        .stopwatch-controls button:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+        .stopwatch-controls button:active {
+            transform: scale(0.95);
+        }
+        .weather-animation {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* Ensures it doesn't interfere with clicks */
+            z-index: 5; /* Below chat but above background */
+            opacity: 0;
+            transition: opacity 0.5s ease;
+        }
+        
+        .weather-animation.active {
+            opacity: 1;
+        }
+        
+        /* Rain Animation */
+        .weather-animation.rain {
+            background: linear-gradient(to bottom, rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.3));
+            overflow: hidden;
+        }
+        
+        .weather-animation.rain::before {
+            content: "";
+            position: absolute;
+            top: -100%;
+            left: 0;
+            width: 100%;
+            height: 200%;
+            background: repeating-linear-gradient(
+                to bottom,
+                transparent,
+                transparent 5px,
+                rgba(0, 191, 255, 0.7) 5px,
+                rgba(0, 191, 255, 0.7) 10px
+            );
+            animation: rainFall 2s linear infinite;
+        }
+        
+        @keyframes rainFall {
+            0% { transform: translateY(0); }
+            100% { transform: translateY(100%); }
+        }
+        
+        /* Snow Animation */
+        .weather-animation.snow {
+            background: rgba(255, 255, 255, 0.1);
+            overflow: hidden;
+        }
+        
+        .weather-animation.snow::before {
+            content: "";
+            position: absolute;
+            top: -100%;
+            left: 0;
+            width: 100%;
+            height: 200%;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><circle cx="5" cy="5" r="2" fill="white"/></svg>') repeat;
+            animation: snowFall 3s linear infinite;
+        }
+        
+        @keyframes snowFall {
+            0% { transform: translateY(0); }
+            100% { transform: translateY(100%); }
+        }
+        
+        /* Sunny Animation */
+        .weather-animation.sunny {
+            background: radial-gradient(circle at center, rgba(255, 215, 0, 0.5), transparent);
+            animation: sunnyGlow 3s ease-in-out infinite;
+        }
+        
+        @keyframes sunnyGlow {
+            0%, 100% { opacity: 0.8; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.1); }
+        }
+        
+        /* Cloudy Animation */
+        .weather-animation.cloudy {
+            background: rgba(128, 128, 128, 0.3);
+            overflow: hidden;
+        }
+        
+        .weather-animation.cloudy::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 200%;
+            height: 100%;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="50"><path d="M20 40a20 20 0 0 0 40 0a25 25 0 0 0 40 0" fill="rgba(255,255,255,0.5)"/></svg>') repeat-x;
+            animation: cloudMove 3s linear infinite;
+        }
+        
+        @keyframes cloudMove {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(50%); }
+        }
+    </style>
+</head>
+<body>
+    <div id="weatherAnimation" class="weather-animation"></div>
+    <div class="chat-container">
+        <div class="chat-log" id="chatLog"></div>
+    </div>
+    <!-- Clear Chat Button -->
+    <button id="clear-chat-btn" data-tooltip="Clear Chat">🗑️</button>
+    <!-- Chat History Button -->
+    <button id="chat-history-btn" data-tooltip="Chat History">📜</button>
+    <div class="controls">
+        <div class="status-indicator" id="status"></div>
+        <button class="mic-btn" id="micBtn">🎤</button>
+    </div>
+    <div class="media-player" id="mediaPlayer">
+        <div class="song-info">
+            <img id="songThumbnail" src="" alt="Song Thumbnail" style="display: none;">
+            <div id="currentSong">No song playing</div>
+        </div>
+        <div class="player-controls-container" style="display: none;">
+            <div class="progress-container">
+                <span id="currentTime">0:00</span>
+                <input type="range" id="progressBar" min="0" max="100" value="0">
+                <span id="duration">0:00</span>
+            </div>
+            <div class="player-controls">
+                <button id="rewindBtn">≪</button>
+                <button id="playPauseBtn">▶</button>
+                <button id="forwardBtn">≫</button>
+                <button id="stopBtn">⏹</button>
+            </div>
+            <div class="volume-control">
+                <span>Volume:</span>
+                <input type="range" id="volumeSlider" min="0" max="100" value="100">
+            </div>
+        </div>
+    </div>
+    <div class="stopwatch-container" id="stopwatchContainer">
+        <div class="stopwatch-display" id="stopwatchDisplay">00:00:00</div>
+        <div class="stopwatch-controls">
+            <button id="startStopwatchBtn">Start</button>
+            <button id="stopStopwatchBtn">Stop</button>
+            <button id="resetStopwatchBtn">Reset</button>
+        </div>
+    </div>
+
+    <script src="https://sdk.scdn.co/spotify-player.js"></script>
+    <script>
+        // Removed hardcoded API keys and URLs since they are now managed by the backend
+        let scene, camera, renderer, avatar, mixer;
+        let recognition, lipSyncInterval, mouthIndex = -1, blinkMorphIndex = -1;
+        let leftEyeBone, rightEyeBone;
+        let clock, idleAction, randomMovementInterval, randomBlinkInterval;
+        let headBone, neckBone;
+        let currentHeadRotation = { x: 0, y: 0 };
+        let isSpeaking = false;
+        let isListening = false;
+        let spotifyPlayer;
+        let deviceId;
+        let playerReady = false;
+        let accessToken;
+        let useDevicePlayback = false;
+        let isPlaying = false;
+        let currentTrackUri = null;
+        let trackDuration = 0;
+        let progressInterval;
+        let currentPosition = 0;
+        let stopwatchInterval = null;
+        let stopwatchRunning = false;
+        let stopwatchElapsedTime = 0;
+        const HEAD_MOVEMENT_INTENSITY = {
+            idle: { x: 0.20, y: 0.25 },
+            speaking: { x: 0.02, y: 0.03 }
+        };
+
+        window.onSpotifyWebPlaybackSDKReady = () => {
+            console.log("Spotify Web Playback SDK loaded");
+            initializePlayer();
+        };
+
+        function initializePlayer() {
+            fetch("http://127.0.0.1:5000/get_spotify_token")
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        console.error("Token error:", data.error);
+                        useDevicePlayback = true;
+                        return;
+                    }
+        
+                    accessToken = data.access_token;
+                    spotifyPlayer = new Spotify.Player({
+                        name: 'Virtual Assistant Player',
+                        getOAuthToken: cb => { cb(accessToken); },
+                        volume: 0.5
+                    });
+        
+                    spotifyPlayer.addListener('ready', ({ device_id }) => {
+                        console.log('Ready with Device ID', device_id);
+                        deviceId = device_id;
+                        playerReady = true;
+                        transferPlayback(device_id);
+                    });
+        
+                    spotifyPlayer.addListener('not_ready', ({ device_id }) => {
+                        console.log('Device ID has gone offline', device_id);
+                        playerReady = false;
+                    });
+        
+                    spotifyPlayer.addListener('initialization_error', ({ message }) => {
+                        console.error('Init error:', message);
+                        useDevicePlayback = true;
+                    });
+        
+                    spotifyPlayer.addListener('authentication_error', ({ message }) => {
+                        console.error('Auth error:', message);
+                        useDevicePlayback = true;
+                    });
+        
+                    spotifyPlayer.addListener('account_error', ({ message }) => {
+                        console.error('Account error:', message);
+                        useDevicePlayback = true;
+                    });
+        
+                    spotifyPlayer.connect().then(success => {
+                        if (success) console.log('Connected to Spotify Player');
+                    });
+                })
+                .catch(error => {
+                    console.error("Player init failed:", error);
+                    useDevicePlayback = true;
+                });
+        }
+
+        function transferPlayback(device_id) {
+            fetch(`https://api.spotify.com/v1/me/player`, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    device_ids: [device_id],
+                    play: false
+                })
+            }).then(response => {
+                if (!response.ok) {
+                    console.error('Transfer playback failed');
+                }
+            });
+        }
+
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 1.5, 1.5);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            document.body.appendChild(renderer.domElement);
+
+            clock = new THREE.Clock();
+
+            const ambientLight = new THREE.AmbientLight(0x404040, 1.2);
+            scene.add(ambientLight);
+
+            const spotLight = new THREE.SpotLight(0xffffff, 2, 10, Math.PI / 4, 0.5);
+            spotLight.position.set(2, 3, 3);
+            spotLight.castShadow = true;
+            scene.add(spotLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+            directionalLight.position.set(5, 5, 5);
+            directionalLight.castShadow = true;
+            scene.add(directionalLight);
+
+            const loader = new THREE.TextureLoader();
+            loader.load("https://static.vecteezy.com/system/resources/previews/005/425/418/non_2x/3d-office-minimalist-room-with-wooden-design-interior-free-photo.jpg", function(texture) {
+                scene.background = texture;
+            });
+
+            new THREE.GLTFLoader().load(
+                "https://models.readyplayer.me/67e1052a79ac9bcf819b704f.glb",
+                (gltf) => {
+                    avatar = gltf.scene;
+                    avatar.scale.set(2, 2, 2);
+                    avatar.position.set(0, -1.5, 0);
+                    scene.add(avatar);
+                    mixer = new THREE.AnimationMixer(avatar);
+
+                    avatar.traverse(child => {
+                        if (child.morphTargetDictionary && child.morphTargetInfluences) {
+                            console.log("Morph Targets Available:", child.morphTargetDictionary);
+                            const mouthName = Object.keys(child.morphTargetDictionary).find(name =>
+                                name.toLowerCase().includes("mouth") || name.toLowerCase().includes("jaw")
+                            );
+                            if (mouthName) {
+                                mouthIndex = child.morphTargetDictionary[mouthName];
+                                console.log("Mouth Morph Target:", mouthName, "at index", mouthIndex);
+                            }
+                            const blinkName = Object.keys(child.morphTargetDictionary).find(name =>
+                                name.toLowerCase().includes("blink") || name.toLowerCase().includes("eyesclosed")
+                            );
+                            if (blinkName) {
+                                blinkMorphIndex = child.morphTargetDictionary[blinkName];
+                                console.log("Blink Morph Target:", blinkName, "at index", blinkMorphIndex);
+                            } else {
+                                console.log("No Blink Morph Target Found!");
+                            }
+                        }
+                        if (child.isBone) {
+                            if (child.name === 'Head') {
+                                headBone = child;
+                                currentHeadRotation.x = headBone.rotation.x;
+                                currentHeadRotation.y = headBone.rotation.y;
+                            }
+                            if (child.name === 'Neck') neckBone = child;
+                            if (child.name === 'LeftEye') leftEyeBone = child;
+                            if (child.name === 'RightEye') rightEyeBone = child;
+                        }
+                    });
+
+                    console.log("Eye Bones Found - Left:", leftEyeBone ? "Yes" : "No", "Right:", rightEyeBone ? "Yes" : "No");
+
+                    setupIdleAnimation();
+                    startNaturalMovements();
+                    startEyeBlinking();
+                    displayWelcomeMessage();
+                },
+                undefined,
+                (error) => console.error("Error loading GLTF:", error)
+            );
+
+            window.addEventListener('resize', onWindowResize);
+            document.getElementById("micBtn").addEventListener("click", toggleMic);
+            document.getElementById("clear-chat-btn").addEventListener("click", clearChat);
+            document.getElementById("startStopwatchBtn").addEventListener("click", startStopwatch);
+            document.getElementById("stopStopwatchBtn").addEventListener("click", stopStopwatch);
+            document.getElementById("resetStopwatchBtn").addEventListener("click", resetStopwatch);
+            setupSpotifyControls();
+
+            animate();
+        }
+
+        function displayWelcomeMessage() {
+            const welcomeMessage = "Hello! I'm Peter, your virtual assistant. You can interact with me using voice commands. Here are some things you can try:\n" +
+                                    "- Say 'Peter' to activate me.\n" +
+                                    "- Say 'Play [song name] song' to play music (e.g., 'Play Shape of You song').\n" +
+                                    "- Say 'Stop song' to stop the music.\n" +
+                                    "- Say 'List songs' to hear trending songs.\n" +
+                                    "- Say 'Tell me the time' to hear the current time.\n" +
+                                    "- Say 'Tell me the date' to hear today's date.\n" +
+                                    "- Say 'Tell me tomorrow's date' to hear tomorrow's date.\n" +
+                                    "- Say 'Tell me yesterday's date' to hear yesterday's date.\n" +
+                                    "- Say 'Tell me the day' to hear the current day.\n" +
+                                    "- Say 'Start stopwatch', 'Stop stopwatch', or 'Reset stopwatch' to use the stopwatch.\n" +
+                                    "- Say 'Tell me the news' or 'Tell me [category] news' (e.g., 'Tell me sports news') to hear the latest news.\n" +
+                                    "- Say 'Tell me the weather' and then say the city name to get the weather (e.g., say 'Tell me the weather' and then 'New York').\n" +
+                                    "- Say 'Tell me the stock' and then say the stock symbol to get stock info (e.g., say 'Tell me the stock' and then 'AAPL').\n" +
+                                    "- Say 'Help' at any time to see these instructions again.";
+            addMessage(welcomeMessage, 'bot');
+            speak(welcomeMessage);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const deltaTime = clock.getDelta();
+            if (mixer) mixer.update(deltaTime);
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function setupIdleAnimation() {
+            if (mixer && avatar) {
+                const breathingSpeed = 0.5;
+                const breathingAmount = 0.01;
+                idleAction = mixer.clipAction(
+                    new THREE.AnimationClip('breathing', 3, [
+                        new THREE.NumberKeyframeTrack('.scale[1]', [0, 1.5, 3], [1, 1 + breathingAmount, 1])
+                    ])
+                );
+                idleAction.loop = THREE.LoopRepeat;
+                idleAction.play();
+            }
+        }
+
+        function startNaturalMovements() {
+            setupRandomMovements();
+        }
+
+        function smoothlyRotateHeadTo(targetX, targetY, duration = 2000) {
+            if (!headBone) return;
+            const startX = currentHeadRotation.x;
+            const startY = currentHeadRotation.y;
+            const startTime = Date.now();
+            if (window.currentHeadAnimation) clearInterval(window.currentHeadAnimation);
+            window.currentHeadAnimation = setInterval(() => {
+                const elapsed = Date.now() - startTime;
+                if (elapsed > duration) {
+                    currentHeadRotation.x = targetX;
+                    currentHeadRotation.y = targetY;
+                    headBone.rotation.x = targetX;
+                    headBone.rotation.y = targetY;
+                    clearInterval(window.currentHeadAnimation);
+                    return;
+                }
+                const t = elapsed / duration;
+                const cubicEase = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+                currentHeadRotation.x = startX + (targetX - startX) * cubicEase;
+                currentHeadRotation.y = startY + (targetY - startY) * cubicEase;
+                headBone.rotation.x = currentHeadRotation.x;
+                headBone.rotation.y = currentHeadRotation.y;
+            }, 16);
+        }
+
+        function setupRandomMovements() {
+            randomMovementInterval = setInterval(() => {
+                if (!isSpeaking && headBone) {
+                    let intensityMultiplier = Math.random() < 0.3 ? 1.5 : 1.0;
+                    const targetRotX = (Math.random() - 0.5) * HEAD_MOVEMENT_INTENSITY.idle.x * intensityMultiplier;
+                    const targetRotY = (Math.random() - 0.5) * HEAD_MOVEMENT_INTENSITY.idle.y * intensityMultiplier;
+                    const duration = 1500 + Math.random() * 1500;
+                    smoothlyRotateHeadTo(targetRotX, targetRotY, duration);
+                }
+            }, 4000);
+        }
+
+        function blinkEyes() {
+            const duration = 1500;
+            let startTime = Date.now();
+            let isClosing = true;
+            const blinkInterval = setInterval(() => {
+                const elapsed = Date.now() - startTime;
+                let progress = elapsed / (duration / 2);
+                if (blinkMorphIndex !== -1 && avatar) {
+                    avatar.traverse(child => {
+                        if (child.morphTargetInfluences && blinkMorphIndex in child.morphTargetInfluences) {
+                            if (isClosing) {
+                                if (progress <= 1) child.morphTargetInfluences[blinkMorphIndex] = progress;
+                                else {
+                                    isClosing = false;
+                                    startTime = Date.now();
+                                }
+                            } else {
+                                progress = elapsed / (duration / 2);
+                                if (progress <= 1) child.morphTargetInfluences[blinkMorphIndex] = 1 - progress;
+                                else {
+                                    child.morphTargetInfluences[blinkMorphIndex] = 0;
+                                    clearInterval(blinkInterval);
+                                }
+                            }
+                        }
+                    });
+                } else if (leftEyeBone && rightEyeBone) {
+                    const maxRotation = 0.3;
+                    if (isClosing) {
+                        if (progress <= 1) {
+                            leftEyeBone.rotation.x = maxRotation * progress;
+                            rightEyeBone.rotation.x = maxRotation * progress;
+                        } else {
+                            isClosing = false;
+                            startTime = Date.now();
+                        }
+                    } else {
+                        progress = elapsed / (duration / 2);
+                        if (progress <= 1) {
+                            leftEyeBone.rotation.x = maxRotation * (1 - progress);
+                            rightEyeBone.rotation.x = maxRotation * (1 - progress);
+                        } else {
+                            leftEyeBone.rotation.x = 0;
+                            rightEyeBone.rotation.x = 0;
+                            clearInterval(blinkInterval);
+                        }
+                    }
+                } else {
+                    console.log("No blink method available (morph or bones).");
+                    clearInterval(blinkInterval);
+                }
+            }, 16);
+        }
+
+        function startEyeBlinking() {
+            randomBlinkInterval = setInterval(() => {
+                if (!isSpeaking) {
+                    console.log("Triggering blink...");
+                    blinkEyes();
+                }
+            }, 5000);
+        }
+
+        async function detectSign() {
+            try {
+                const response = await fetch("/detect_sign", { method: "POST" });
+                const data = await response.json();
+                if (data.speak) {
+                    addMessage(data.response, 'bot');
+                    speak(data.response);
+                } else if (data.sign) {
+                    addMessage(data.sign, 'user');
+                    fetch("/chatbot-response", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ message: data.sign })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        addMessage(data.response, 'bot');
+                        speak(data.response);
+                    })
+                    .catch(error => console.error("Error:", error));
+                }
+            } catch (error) {
+                console.error("Error detecting sign:", error);
+            }
+        }
+
+        function addMessage(text, sender) {
+            const chatLog = document.getElementById('chatLog');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}-message`;
+            const urlRegex = /(https?:\/\/[^\s]+)/g;
+            if (sender === 'bot' && urlRegex.test(text)) {
+                const htmlText = text.replace(urlRegex, '<a href="$1" target="_blank">$1</a>');
+                messageDiv.innerHTML = htmlText;
+            } else {
+                messageDiv.textContent = text;
+            }
+            chatLog.appendChild(messageDiv);
+            chatLog.scrollTop = chatLog.scrollHeight;
+        }
+
+        function clearChat() {
+            const chatLog = document.getElementById('chatLog');
+            chatLog.innerHTML = '';
+            addMessage("Chat cleared!", 'bot');
+            speak("Chat cleared!");
+        }
+
+        function speak(text) {
+            return new Promise((resolve) => {
+                const synth = window.speechSynthesis;
+                const utterance = new SpeechSynthesisUtterance(text);
+                function setVoice() {
+                    const voices = synth.getVoices();
+                    if (voices.length === 0) {
+                        setTimeout(setVoice, 100);
+                        return;
+                    }
+                    const maleVoice = voices.find(voice =>
+                        voice.name.includes("Male") || voice.name.includes("David") ||
+                        voice.name.includes("Matthew") || voice.name.includes("Jarvis")
+                    );
+                    if (maleVoice) utterance.voice = maleVoice;
+                    synth.speak(utterance);
+                }
+                utterance.onstart = () => {
+                    isSpeaking = true;
+                    updateUIState('responding');
+                    smoothlyRotateHeadTo(0, 0, 800);
+                    if (avatar && mouthIndex !== -1) {
+                        lipSyncInterval = setInterval(() => {
+                            avatar.traverse(child => {
+                                if (child.morphTargetInfluences) {
+                                    child.morphTargetInfluences[mouthIndex] = Math.random() * 0.5 + 0.3;
+                                    if (headBone && Math.random() < 0.05) {
+                                        const emphasisX = (Math.random() - 0.5) * HEAD_MOVEMENT_INTENSITY.speaking.x;
+                                        const emphasisY = (Math.random() - 0.5) * HEAD_MOVEMENT_INTENSITY.speaking.y;
+                                        smoothlyRotateHeadTo(emphasisX, emphasisY, 1200);
+                                    }
+                                }
+                            });
+                        }, 100);
+                    }
+                };
+                utterance.onend = () => {
+                    if (lipSyncInterval) clearInterval(lipSyncInterval);
+                    avatar.traverse(child => {
+                        if (child.morphTargetInfluences && mouthIndex !== -1) {
+                            child.morphTargetInfluences[mouthIndex] = 0;
+                        }
+                    });
+                    smoothlyRotateHeadTo(0, 0, 1000);
+                    setTimeout(() => {
+                        isSpeaking = false;
+                        updateUIState('idle');
+                    }, 500);
+                    resolve();
+                };
+                setVoice();
+            });
+        }
+
+        function toggleMic() {
+            const micBtn = document.getElementById('micBtn');
+            if (!isListening && !isSpeaking) {
+                try {
+                    updateUIState('listening');
+                    if (!recognition) {
+                        recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+                        recognition.lang = "en-US";
+                        recognition.continuous = false;
+                        recognition.onresult = (event) => {
+                            const text = event.results[0][0].transcript;
+                            fetchChatbotResponse(text);
+                        };
+                        recognition.onend = () => {
+                            isListening = false;
+                            updateUIState('idle');
+                        };
+                    }
+                    recognition.start();
+                    isListening = true;
+                    micBtn.textContent = '🎤';
+                } catch (error) {
+                    console.error("Speech recognition error:", error);
+                    isListening = false;
+                    updateUIState('idle');
+                    micBtn.textContent = '🎤';
+                }
+            } else {
+                if (isListening && recognition) {
+                    recognition.stop();
+                    isListening = false;
+                }
+                if (isSpeaking) {
+                    window.speechSynthesis.cancel();
+                    clearInterval(lipSyncInterval);
+                    if (avatar) avatar.traverse(child => {
+                        if (child.morphTargetInfluences && mouthIndex !== -1) {
+                            child.morphTargetInfluences[mouthIndex] = 0;
+                        }
+                    });
+                    smoothlyRotateHeadTo(0, 0, 1000);
+                    isSpeaking = false;
+                }
+                updateUIState('idle');
+                micBtn.textContent = '🎤';
+            }
+        }
+
+        async function fetchChatbotResponse(text) {
+            addMessage(text, 'user');
+            updateUIState('processing');
+            try {
+                const lowerText = text.toLowerCase();
+                if ((lowerText.includes("peter") || lowerText.includes("detect") || lowerText.includes("recognize") || lowerText.includes("scan")) && 
+                    (lowerText.includes("face") || lowerText.includes("my face"))) {
+                    updateUIState('responding');
+                    addMessage("Sure! Look at the camera.", 'bot');
+                    await speak("Sure! Look at the camera.");
+                    await detectFace();
+                } else if (lowerText === "help") {
+                    displayWelcomeMessage();
+                } else if (lowerText.includes("time") || lowerText.includes("tell me the time")) {
+                    const response = await fetch("http://127.0.0.1:5000/get_time", {
+                        method: "GET",
+                        headers: { "Content-Type": "application/json" }
+                    });
+                    const data = await response.json();
+                    updateUIState('responding');
+                    addMessage(data.response, 'bot');
+                    await speak(data.response);
+                } else if (lowerText.includes("date") || lowerText.includes("tell me the date")) {
+                    const response = await fetch("http://127.0.0.1:5000/get_date", {
+                        method: "GET",
+                        headers: { "Content-Type": "application/json" }
+                    });
+                    const data = await response.json();
+                    updateUIState('responding');
+                    addMessage(data.response, 'bot');
+                    await speak(data.response);
+                } else if (lowerText.includes("tomorrow") || lowerText.includes("tomorrow's date")) {
+                    const response = await fetch("http://127.0.0.1:5000/get_tomorrow_date", {
+                        method: "GET",
+                        headers: { "Content-Type": "application/json" }
+                    });
+                    const data = await response.json();
+                    updateUIState('responding');
+                    addMessage(data.response, 'bot');
+                    await speak(data.response);
+                } else if (lowerText.includes("yesterday") || lowerText.includes("yesterday's date")) {
+                    const response = await fetch("http://127.0.0.1:5000/get_yesterday_date", {
+                        method: "GET",
+                        headers: { "Content-Type": "application/json" }
+                    });
+                    const data = await response.json();
+                    updateUIState('responding');
+                    addMessage(data.response, 'bot');
+                    await speak(data.response);
+                } else if (lowerText.includes("day") || lowerText.includes("tell me the day")) {
+                    const response = await fetch("http://127.0.0.1:5000/get_day", {
+                        method: "GET",
+                        headers: { "Content-Type": "application/json" }
+                    });
+                    const data = await response.json();
+                    updateUIState('responding');
+                    addMessage(data.response, 'bot');
+                    await speak(data.response);
+                } else if (lowerText.includes("start stopwatch")) {
+                    startStopwatch();
+                } else if (lowerText.includes("stop stopwatch")) {
+                    stopStopwatch();
+                } else if (lowerText.includes("reset stopwatch")) {
+                    resetStopwatch();
+                } else if (lowerText.includes("weather") || lowerText.includes("tell me the weather")) {
+                    // Check if the city is already provided in the prompt (e.g., "today's weather at Nagpur")
+                    let city = null;
+                    const weatherMatch = lowerText.match(/(?:weather at|weather in|weather for)\s+([a-zA-Z\s]+)/);
+                    if (weatherMatch && weatherMatch[1]) {
+                        city = weatherMatch[1].trim(); // Extract the city name
+                        const weatherResponse = await getWeather(city);
+                        updateUIState('responding');
+                        addMessage(weatherResponse, 'bot');
+                        await speak(weatherResponse);
+                    } else {
+                        // If city is not provided, prompt the user to say the city name
+                        updateUIState('responding');
+                        addMessage("Please say the name of the city.", 'bot');
+                        await speak("Please say the name of the city.");
+                        city = await getNameFromSpeech("city");
+                        if (city) {
+                            const weatherResponse = await getWeather(city);
+                            updateUIState('responding');
+                            addMessage(weatherResponse, 'bot');
+                            await speak(weatherResponse);
+                        } else {
+                            updateUIState('responding');
+                            addMessage("No city name provided. Please try again.", 'bot');
+                            await speak("No city name provided. Please try again.");
+                        }
+                    }
+                } else if (lowerText.includes("news") || lowerText.includes("tell me the news")) {
+                    let category = "overall";
+                    if (lowerText.includes("sports")) category = "sports";
+                    else if (lowerText.includes("business")) category = "business";
+                    else if (lowerText.includes("politics")) category = "politics";
+                    else if (lowerText.includes("entertainment")) category = "entertainment";
+                    else if (lowerText.includes("health")) category = "health";
+                    else if (lowerText.includes("science")) category = "science";
+                    else if (lowerText.includes("technology")) category = "technology";
+                
+                    const newsResponse = await getNews(category);
+                    updateUIState('responding');
+                    addMessage(newsResponse, 'bot');
+                    await speak(newsResponse);
+                } else if (lowerText.includes("stock") || lowerText.includes("tell me the stock")) {
+                    updateUIState('responding');
+                    addMessage("Please say the stock symbol.", 'bot');
+                    await speak("Please say the stock symbol.");
+                    const symbol = await getNameFromSpeech("stock symbol");
+                    if (symbol) {
+                        const stockResponse = await getStock(symbol);
+                        updateUIState('responding');
+                        addMessage(stockResponse, 'bot');
+                        await speak(stockResponse);
+                    } else {
+                        updateUIState('responding');
+                        addMessage("No stock symbol provided. Please try again.", 'bot');
+                        await speak("No stock symbol provided. Please try again.");
+                    }
+                } else if (lowerText.startsWith("play ")) {
+                    const songCommand = lowerText;
+                    console.log("Requesting song:", songCommand);
+                    try {
+                        const response = await fetch("http://127.0.0.1:5000/play_song", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ 
+                                song_name: songCommand,
+                                use_device_playback: useDevicePlayback
+                            })
+                        });
+                        
+                        if (!response.ok) {
+                            const errorText = await response.text();
+                            throw new Error(`Server error: ${response.status} - ${errorText}. Please try saying "Play [song name] song" or "Play [song name] by [artist]". For example, "Play Shape of You song" or "Play Shape of You by Ed Sheeran".`);
+                        }
+                        const data = await response.json();
+                        console.log("Backend response:", data);
+                        
+                        if (data.error) {
+                            throw new Error(data.error);
+                        }
+        
+                        if (data.multiple) {
+                            displaySongOptions(data.options);
+                            addMessage(data.response, 'bot');
+                            speak(data.response);
+                        } else if (data.uri) {
+                            const mediaPlayer = document.getElementById('mediaPlayer');
+                            mediaPlayer.style.display = 'block';
+                            document.getElementById('currentSong').textContent = 
+                                `Now Playing: ${data.name} by ${data.artist}`;
+                            const songThumbnail = document.getElementById('songThumbnail');
+                            if (songThumbnail) {
+                                songThumbnail.src = data.thumbnail || 'https://via.placeholder.com/50';
+                                songThumbnail.style.display = data.thumbnail ? 'block' : 'none';
+                            }
+                            document.querySelector('.player-controls-container').style.display = 'block';
+        
+                            if (!useDevicePlayback && playerReady) {
+                                await playTrack(data.uri, data.thumbnail);
+                            }
+                            addMessage(data.response, 'bot');
+                            speak(data.response);
+                        }
+                        
+                    } catch (error) {
+                        console.error("Play error:", error);
+                        addMessage(`Error: ${error.message}`, 'bot');
+                        speak(`Error: ${error.message}`);
+                    }
+                } else if (lowerText === "stop song") {
+                    try {
+                        if (!useDevicePlayback && playerReady) {
+                            await fetch(`https://api.spotify.com/v1/me/player/pause?device_id=${deviceId}`, {
+                                method: 'PUT',
+                                headers: {
+                                    'Authorization': `Bearer ${accessToken}`,
+                                    'Content-Type': 'application/json'
+                                }
+                            });
+                            document.getElementById('mediaPlayer').style.display = 'none';
+                            document.getElementById('currentSong').textContent = "No song playing";
+                            document.querySelector('.player-controls-container').style.display = 'none';
+                            addMessage("Song paused.", 'bot');
+                            speak("Song paused.");
+                        } else {
+                            const response = await fetch("http://127.0.0.1:5000/stop_song", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({})
+                            });
+                            const data = await response.json();
+                            updateUIState('responding');
+                            addMessage(data.response, 'bot');
+                            speak(data.response);
+                            document.getElementById('mediaPlayer').style.display = 'none';
+                            document.getElementById('currentSong').textContent = "No song playing";
+                            document.querySelector('.player-controls-container').style.display = 'none';
+                        }
+                    } catch (error) {
+                        console.error("Error stopping song:", error);
+                        updateUIState('responding');
+                        addMessage("Error stopping the song.", 'bot');
+                        speak("Error stopping the song.");
+                        document.getElementById('mediaPlayer').style.display = 'none';
+                        document.getElementById('currentSong').textContent = "No song playing";
+                        document.querySelector('.player-controls-container').style.display = 'none';
+                    }
+                } else if (lowerText === "list songs") {
+                    try {
+                        const response = await fetch("http://127.0.0.1:5000/list_songs", {
+                            method: "GET",
+                            headers: { "Content-Type": "application/json" }
+                        });
+                        const data = await response.json();
+                        updateUIState('responding');
+                        addMessage(data.response, 'bot');
+                        await speak(data.response);
+                    } catch (error) {
+                        console.error("Error listing songs:", error);
+                        updateUIState('responding');
+                        addMessage("Error fetching song list.", 'bot');
+                        await speak("Error fetching song list.");
+                    }
+                } else if (lowerText.includes("detect sign") || lowerText.includes("read my sign") || lowerText.includes("what sign am i making")) {
+                    updateUIState('responding');
+                    addMessage("Sure! Show me your hand sign.", 'bot');
+                    await speak("Sure! Show me your hand sign.");
+                    try {
+                        const response = await fetch("http://127.0.0.1:5000/detect_sign", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({})
+                        });
+                        const data = await response.json();
+                        if (data.sign) {
+                            const signMessage = `You signed the letter ${data.sign}.`;
+                            addMessage(signMessage, 'bot');
+                            await speak(signMessage);
+                        } else {
+                            addMessage(data.response, 'bot');
+                            await speak(data.response);
+                        }
+                    } catch (error) {
+                        console.error("Sign detection error:", error);
+                        addMessage("Error detecting your sign.", 'bot');
+                        await speak("Error detecting your sign.");
+                    }
+                } else {
+                    try {
+                        const response = await fetch("http://127.0.0.1:5000/chat", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ message: text, language: "English" })
+                        });
+                        const data = await response.json();
+                        updateUIState('responding');
+                        if (data.response.includes("Error")) {
+                            addMessage("I didn't understand that. Say 'Help' to see what I can do!", 'bot');
+                            await speak("I didn't understand that. Say 'Help' to see what I can do!");
+                        } else {
+                            addMessage(data.response, 'bot');
+                            await speak(data.response);
+                        }
+                    } catch (error) {
+                        console.error("Chat error:", error);
+                        updateUIState('responding');
+                        addMessage("Error processing your request.", 'bot');
+                        await speak("Error processing your request.");
+                    }
+                }
+            } catch (error) {
+                console.error("Fetch error:", error);
+                updateUIState('idle');
+                addMessage(`Error processing request: ${error.message}`, 'bot');
+                await speak("Error processing your request.");
+            }
+            updateUIState('idle');
+        }
+
+        function displaySongOptions(options) {
+            const mediaPlayer = document.getElementById('mediaPlayer');
+            mediaPlayer.style.display = 'block';
+            const songInfo = mediaPlayer.querySelector('.song-info');
+            
+            const songThumbnail = document.getElementById('songThumbnail');
+            const currentSong = document.getElementById('currentSong');
+            
+            songThumbnail.src = 'https://via.placeholder.com/50';
+            songThumbnail.style.display = 'block';
+            currentSong.textContent = 'Select a song:';
+            
+            const existingOptions = songInfo.querySelector('.song-options');
+            if (existingOptions) {
+                existingOptions.remove();
+            }
+            
+            const optionsContainer = document.createElement('div');
+            optionsContainer.className = 'song-options';
+            optionsContainer.style.maxHeight = '150px';
+            optionsContainer.style.overflowY = 'auto';
+            
+            options.forEach((option, index) => {
+                const optionDiv = document.createElement('div');
+                optionDiv.className = 'song-option';
+                optionDiv.style.display = 'flex';
+                optionDiv.style.alignItems = 'center';
+                optionDiv.style.padding = '5px';
+                optionDiv.style.cursor = 'pointer';
+                optionDiv.style.borderBottom = '1px solid rgba(255, 255, 255, 0.2)';
+                
+                const thumbnail = document.createElement('img');
+                thumbnail.src = option.thumbnail || 'https://via.placeholder.com/40';
+                thumbnail.style.width = '40px';
+                thumbnail.style.height = '40px';
+                thumbnail.style.borderRadius = '4px';
+                thumbnail.style.marginRight = '10px';
+                
+                const text = document.createElement('span');
+                text.textContent = `${option.name} by ${option.artist} (${option.album})`;
+                text.style.color = '#fff';
+                text.style.fontSize = '12px';
+                
+                optionDiv.appendChild(thumbnail);
+                optionDiv.appendChild(text);
+                
+                optionDiv.onclick = async () => {
+                    try {
+                        currentSong.textContent = `Now Playing: ${option.name} by ${option.artist}`;
+                        songThumbnail.src = option.thumbnail || 'https://via.placeholder.com/50';
+                        songThumbnail.style.display = 'block';
+                        
+                        optionsContainer.remove();
+                        document.querySelector('.player-controls-container').style.display = 'block';
+                        
+                        if (!useDevicePlayback && playerReady) {
+                            await playTrack(option.uri, option.thumbnail);
+                        } else {
+                            await fetch("http://127.0.0.1:5000/play_song", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ 
+                                    song_name: `play ${option.name} by ${option.artist}`,
+                                    use_device_playback: true
+                                })
+                            });
+                            document.querySelector('.player-controls-container').style.display = 'block';
+                        }
+                        addMessage(`Playing ${option.name} by ${option.artist}`, 'bot');
+                        speak(`Playing ${option.name} by ${option.artist}`);
+                    } catch (error) {
+                        console.error("Error playing selected song:", error);
+                        addMessage(`Error: ${error.message}`, 'bot');
+                        speak("Sorry, I couldn't play that song.");
+                    }
+                };
+                
+                optionsContainer.appendChild(optionDiv);
+            });
+            
+            mediaPlayer.appendChild(optionsContainer);
+        }
+
+        async function playTrack(uri, thumbnail) {
+            try {
+                const response = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ uris: [uri] })
+                });
+        
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error.message);
+                }
+        
+                isPlaying = true;
+                currentTrackUri = uri;
+                currentPosition = 0;
+                document.getElementById('playPauseBtn').textContent = '⏸';
+                document.getElementById('stopBtn').disabled = false;
+        
+                const songThumbnail = document.getElementById('songThumbnail');
+                if (songThumbnail) {
+                    songThumbnail.src = thumbnail || 'https://via.placeholder.com/50';
+                    songThumbnail.style.display = 'block';
+                }
+        
+                document.querySelector('.player-controls-container').style.display = 'block';
+        
+                const trackResponse = await fetch(`https://api.spotify.com/v1/tracks/${uri.split(':')[2]}`, {
+                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                });
+                const trackData = await trackResponse.json();
+                trackDuration = trackData.duration_ms;
+                document.getElementById('duration').textContent = formatTime(trackDuration);
+        
+                document.getElementById('progressBar').value = 0;
+                document.getElementById('currentTime').textContent = '0:00';
+        
+                startProgressUpdate();
+                console.log('Playback started successfully');
+                return true;
+            } catch (error) {
+                console.error('Playback failed:', error);
+                useDevicePlayback = true;
+                return false;
+            }
+        }
+
+        function formatStopwatchTime(seconds) {
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        }
+        
+        function updateStopwatchDisplay() {
+            fetch("http://127.0.0.1:5000/get_stopwatch_time")
+                .then(response => response.json())
+                .then(data => {
+                    if (data.elapsed_time !== undefined) {
+                        stopwatchElapsedTime = data.elapsed_time;
+                        document.getElementById('stopwatchDisplay').textContent = formatStopwatchTime(stopwatchElapsedTime);
+                    }
+                })
+                .catch(error => console.error("Error fetching stopwatch time:", error));
+        }
+        
+        function startStopwatch() {
+            if (!stopwatchRunning) {
+                fetch("http://127.0.0.1:5000/start_stopwatch", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({})
+                })
+                .then(response => response.json())
+                .then(data => {
+                    addMessage(data.response, 'bot');
+                    speak(data.response);
+                    if (data.action === "start_stopwatch") {
+                        stopwatchRunning = true;
+                        document.getElementById('stopwatchContainer').style.display = 'block';
+                        document.getElementById('startStopwatchBtn').textContent = 'Start';
+                        if (stopwatchInterval) clearInterval(stopwatchInterval);
+                        stopwatchInterval = setInterval(updateStopwatchDisplay, 1000);
+                    }
+                })
+                .catch(error => {
+                    console.error("Error starting stopwatch:", error);
+                    addMessage("Error starting stopwatch.", 'bot');
+                    speak("Error starting stopwatch.");
+                });
+            } else {
+                addMessage("Stopwatch is already running.", 'bot');
+                speak("Stopwatch is already running.");
+            }
+        }
+        
+        function stopStopwatch() {
+            if (stopwatchRunning) {
+                fetch("http://127.0.0.1:5000/stop_stopwatch", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({})
+                })
+                .then(response => response.json())
+                .then(data => {
+                    addMessage(data.response, 'bot');
+                    speak(data.response);
+                    if (data.action === "stop_stopwatch") {
+                        stopwatchRunning = false;
+                        stopwatchElapsedTime = data.elapsed_time;
+                        document.getElementById('stopwatchDisplay').textContent = formatStopwatchTime(stopwatchElapsedTime);
+                        if (stopwatchInterval) clearInterval(stopwatchInterval);
+                    }
+                })
+                .catch(error => {
+                    console.error("Error stopping stopwatch:", error);
+                    addMessage("Error stopping stopwatch.", 'bot');
+                    speak("Error stopping stopwatch.");
+                });
+            } else {
+                addMessage("Stopwatch is not running.", 'bot');
+                speak("Stopwatch is not running.");
+            }
+        }
+        
+        function resetStopwatch() {
+            fetch("http://127.0.0.1:5000/reset_stopwatch", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({})
+            })
+            .then(response => response.json())
+            .then(data => {
+                addMessage(data.response, 'bot');
+                speak(data.response);
+                if (data.action === "reset_stopwatch") {
+                    stopwatchRunning = false;
+                    stopwatchElapsedTime = 0;
+                    document.getElementById('stopwatchDisplay').textContent = "00:00:00";
+                    document.getElementById('stopwatchContainer').style.display = 'none';
+                    if (stopwatchInterval) clearInterval(stopwatchInterval);
+                }
+            })
+            .catch(error => {
+                console.error("Error resetting stopwatch:", error);
+                addMessage("Error resetting stopwatch.", 'bot');
+                speak("Error resetting stopwatch.");
+            });
+        }
+
+        function formatTime(ms) {
+            const seconds = Math.floor(ms / 1000);
+            const minutes = Math.floor(seconds / 60);
+            const remainingSeconds = seconds % 60;
+            return `${minutes}:${remainingSeconds < 10 ? '0' : ''}${remainingSeconds}`;
+        }
+
+        function startProgressUpdate() {
+            const progressBar = document.getElementById('progressBar');
+            const currentTimeDisplay = document.getElementById('currentTime');
+            const mediaPlayer = document.getElementById('mediaPlayer');
+            const playPauseBtn = document.getElementById('playPauseBtn');
+        
+            if (progressInterval) clearInterval(progressInterval);
+        
+            progressInterval = setInterval(async () => {
+                if (!useDevicePlayback && playerReady && isPlaying) {
+                    try {
+                        const response = await fetch(`https://api.spotify.com/v1/me/player?device_id=${deviceId}`, {
+                            headers: {
+                                'Authorization': `Bearer ${accessToken}`,
+                                'Content-Type': 'application/json'
+                            }
+                        });
+        
+                        if (!response.ok) {
+                            console.error("Failed to fetch playback state:", response.status);
+                            return;
+                        }
+        
+                        const playbackData = await response.json();
+        
+                        if (!playbackData || !playbackData.is_playing || playbackData.device.id !== deviceId) {
+                            isPlaying = false;
+                            playPauseBtn.textContent = '▶';
+                            clearInterval(progressInterval);
+                            return;
+                        }
+        
+                        currentPosition = playbackData.progress_ms;
+                        const progress = (currentPosition / trackDuration) * 100;
+                        progressBar.value = progress;
+                        currentTimeDisplay.textContent = formatTime(currentPosition);
+        
+                        if (currentPosition >= trackDuration) {
+                            isPlaying = false;
+                            playPauseBtn.textContent = '▶';
+                            mediaPlayer.style.display = 'none';
+                            document.getElementById('currentSong').textContent = "No song playing";
+                            document.getElementById('songThumbnail').style.display = 'none';
+                            clearInterval(progressInterval);
+                        }
+                    } catch (error) {
+                        console.error("Error updating progress:", error);
+                        isPlaying = false;
+                        playPauseBtn.textContent = '▶';
+                    }
+                }
+            }, 1000);
+        
+            progressBar.oninput = async () => {
+                const seekPosition = (progressBar.value / 100) * trackDuration;
+                currentPosition = seekPosition;
+                currentTimeDisplay.textContent = formatTime(seekPosition);
+                if (!useDevicePlayback && playerReady) {
+                    try {
+                        await fetch(`https://api.spotify.com/v1/me/player/seek?position_ms=${Math.floor(seekPosition)}&device_id=${deviceId}`, {
+                            method: 'PUT',
+                            headers: {
+                                'Authorization': `Bearer ${accessToken}`,
+                                'Content-Type': 'application/json'
+                            }
+                        });
+                    } catch (error) {
+                        console.error("Seek error:", error);
+                        addMessage(`Error seeking: ${error.message}`, 'bot');
+                    }
+                }
+            };
+        }
+
+        function setupSpotifyControls() {
+            const playPauseBtn = document.getElementById('playPauseBtn');
+            const rewindBtn = document.getElementById('rewindBtn');
+            const forwardBtn = document.getElementById('forwardBtn');
+            const stopBtn = document.getElementById('stopBtn');
+            const volumeSlider = document.getElementById('volumeSlider');
+        
+            playPauseBtn.onclick = async () => {
+                if (!playerReady || !deviceId) {
+                    addMessage("Player not ready. Please try again.", 'bot');
+                    return;
+                }
+            
+                if (isPlaying) {
+                    try {
+                        if (!useDevicePlayback) {
+                            await fetch(`https://api.spotify.com/v1/me/player/pause?device_id=${deviceId}`, {
+                                method: 'PUT',
+                                headers: {
+                                    'Authorization': `Bearer ${accessToken}`,
+                                    'Content-Type': 'application/json'
+                                }
+                            });
+                            isPlaying = false;
+                            playPauseBtn.textContent = '▶';
+                            clearInterval(progressInterval);
+                            addMessage("Playback paused", 'bot');
+                        } else {
+                            await fetch("http://127.0.0.1:5000/stop_song", {  // Assuming pause functionality via stop for device playback
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({})
+                            });
+                            isPlaying = false;
+                            playPauseBtn.textContent = '▶';
+                            addMessage("Playback paused on device", 'bot');
+                        }
+                    } catch (error) {
+                        console.error("Pause error:", error);
+                        addMessage(`Error pausing playback: ${error.message}`, 'bot');
+                    }
+                } else {
+                    try {
+                        if (!useDevicePlayback) {
+                            if (currentTrackUri) {
+                                await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
+                                    method: 'PUT',
+                                    headers: {
+                                        'Authorization': `Bearer ${accessToken}`,
+                                        'Content-Type': 'application/json'
+                                    },
+                                    body: JSON.stringify({
+                                        uris: [currentTrackUri],
+                                        position_ms: Math.floor(currentPosition)
+                                    })
+                                });
+                                isPlaying = true;
+                                playPauseBtn.textContent = '⏸';
+                                startProgressUpdate();
+                                addMessage("Playback resumed", 'bot');
+                            }
+                        } else {
+                            // Note: Resume functionality might need a separate backend endpoint if supported
+                            await fetch("http://127.0.0.1:5000/play_song", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ song_name: currentTrackUri ? currentTrackUri : "resume", use_device_playback: true })
+                            });
+                            isPlaying = true;
+                            playPauseBtn.textContent = '⏸';
+                            addMessage("Playback resumed on device", 'bot');
+                        }
+                    } catch (error) {
+                        console.error("Play error:", error);
+                        addMessage(`Error resuming playback: ${error.message}`, 'bot');
+                    }
+                }
+            };
+        
+            rewindBtn.onclick = async () => {
+                if (!playerReady || !deviceId) return;
+                const currentPosition = parseInt(document.getElementById('progressBar').value / 100 * trackDuration);
+                const newPosition = Math.max(0, currentPosition - 10000);
+                try {
+                    if (!useDevicePlayback) {
+                        await fetch(`https://api.spotify.com/v1/me/player/seek?position_ms=${newPosition}&device_id=${deviceId}`, {
+                            method: 'PUT',
+                            headers: {
+                                'Authorization': `Bearer ${accessToken}`,
+                                'Content-Type': 'application/json'
+                            }
+                        });
+                        document.getElementById('currentTime').textContent = formatTime(newPosition);
+                        document.getElementById('progressBar').value = (newPosition / trackDuration) * 100;
+                    }
+                } catch (error) {
+                    console.error("Rewind error:", error);
+                    addMessage(`Error rewinding: ${error.message}`, 'bot');
+                }
+            };
+        
+            forwardBtn.onclick = async () => {
+                if (!playerReady || !deviceId) return;
+                const currentPosition = parseInt(document.getElementById('progressBar').value / 100 * trackDuration);
+                const newPosition = Math.min(trackDuration, currentPosition + 10000);
+                try {
+                    if (!useDevicePlayback) {
+                        await fetch(`https://api.spotify.com/v1/me/player/seek?position_ms=${newPosition}&device_id=${deviceId}`, {
+                            method: 'PUT',
+                            headers: {
+                                'Authorization': `Bearer ${accessToken}`,
+                                'Content-Type': 'application/json'
+                            }
+                        });
+                        document.getElementById('currentTime').textContent = formatTime(newPosition);
+                        document.getElementById('progressBar').value = (newPosition / trackDuration) * 100;
+                    }
+                } catch (error) {
+                    console.error("Forward error:", error);
+                    addMessage(`Error forwarding: ${error.message}`, 'bot');
+                }
+            };
+        
+            stopBtn.onclick = async () => {
+                if (!playerReady || !deviceId) {
+                    addMessage("Player not ready. Please try again.", 'bot');
+                    return;
+                }
+        
+                try {
+                    if (!useDevicePlayback) {
+                        await fetch(`https://api.spotify.com/v1/me/player/pause?device_id=${deviceId}`, {
+                            method: 'PUT',
+                            headers: {
+                                'Authorization': `Bearer ${accessToken}`,
+                                'Content-Type': 'application/json'
+                            }
+                        });
+                        isPlaying = false;
+                        document.getElementById('mediaPlayer').style.display = 'none';
+                        document.getElementById('currentSong').textContent = "No song playing";
+                        document.getElementById('playPauseBtn').textContent = '▶';
+                        document.getElementById('songThumbnail').style.display = 'none';
+                        clearInterval(progressInterval);
+                        addMessage("Playback stopped", 'bot');
+                    } else {
+                        await fetch("http://127.0.0.1:5000/stop_song", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({})
+                        });
+                        isPlaying = false;
+                        document.getElementById('mediaPlayer').style.display = 'none';
+                        document.getElementById('currentSong').textContent = "No song playing";
+                        document.getElementById('playPauseBtn').textContent = '▶';
+                        document.getElementById('songThumbnail').style.display = 'none';
+                        addMessage("Playback stopped on device", 'bot');
+                    }
+                } catch (error) {
+                    console.error("Stop error:", error);
+                    addMessage(`Error stopping playback: ${error.message}`, 'bot');
+                }
+            };
+        
+            volumeSlider.oninput = async (e) => {
+                if (!playerReady || !deviceId) return;
+        
+                try {
+                    if (!useDevicePlayback) {
+                        const response = await fetch(
+                            `https://api.spotify.com/v1/me/player/volume?volume_percent=${e.target.value}&device_id=${deviceId}`,
+                            {
+                                method: 'PUT',
+                                headers: {
+                                    'Authorization': `Bearer ${accessToken}`,
+                                    'Content-Type': 'application/json'
+                                }
+                            }
+                        );
+        
+                        if (!response.ok) {
+                            const error = await response.json();
+                            throw new Error(error.error.message);
+                        }
+                    } else {
+                        await fetch("http://127.0.0.1:5000/set_volume", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ volume: e.target.value })
+                        });
+                    }
+                } catch (error) {
+                    console.error("Volume error:", error);
+                    addMessage(`Error adjusting volume: ${error.message}`, 'bot');
+                }
+            };
+        }
+
+        function updateUIState(state) {
+            const micBtn = document.getElementById('micBtn');
+            const status = document.querySelector('#status');
+
+            switch(state) {
+                case 'listening':
+                    micBtn.classList.add('listening');
+                    micBtn.classList.remove('stopping');
+                    status.style.opacity = '1';
+                    break;
+                case 'processing':
+                    micBtn.classList.remove('listening');
+                    micBtn.classList.remove('stopping');
+                    status.style.background = '#ffc107';
+                    break;
+                case 'responding':
+                    micBtn.classList.remove('listening');
+                    micBtn.classList.add('stopping');
+                    status.style.background = '#28a745';
+                    break;
+                default:
+                    micBtn.classList.remove('listening');
+                    micBtn.classList.remove('stopping');
+                    status.style.opacity = '0';
+            }
+        }
+
+        async function detectFace() {
+            updateUIState('processing');
+            try {
+                console.log("Attempting to detect faces...");
+                const response = await fetch("/detect_face", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    cache: "no-cache"
+                });
+                if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+                const data = await response.json();
+                console.log("Face detection response:", JSON.stringify(data, null, 2));
+        
+                if (!data || typeof data !== 'object') {
+                    throw new Error("Invalid response format from /detect_face");
+                }
+        
+                if (data.response) {
+                    addMessage(data.response, 'bot');
+                    await speak(data.response);
+                    updateUIState('idle');
+                    return;
+                }
+        
+                if (!data.faces || !Array.isArray(data.faces)) {
+                    throw new Error("Expected 'faces' array in response from /detect_face");
+                }
+        
+                const faces = data.faces;
+                if (faces.length === 0) {
+                    addMessage("No faces detected. Please try again.", 'bot');
+                    await speak("No faces detected. Please try again.");
+                    updateUIState('idle');
+                    return;
+                }
+        
+                const knownFaces = faces.filter(face => !face.new_user);
+                if (knownFaces.length > 0) {
+                    const knownNames = knownFaces.map(face => face.name);
+                    const greetingMessage = `Welcome back, ${knownNames.join(" and ")}!`;
+                    addMessage(greetingMessage, 'bot');
+                    await speak(greetingMessage);
+                }
+        
+                const unknownFaces = faces.filter(face => face.new_user);
+                for (let i = 0; i < unknownFaces.length; i++) {
+                    const faceNumber = i + 1;
+                    addMessage(`New face detected (Person ${faceNumber} of ${unknownFaces.length}). Please look at the camera.`, 'bot');
+                    await speak(`New face detected. Person ${faceNumber} of ${unknownFaces.length}. Please look at the camera.`);
+        
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+        
+                    const captureResponse = await fetch("/capture_face", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        cache: "no-cache"
+                    });
+                    if (!captureResponse.ok) {
+                        const errorData = await captureResponse.json();
+                        throw new Error(errorData.error || `HTTP error during face capture! Status: ${captureResponse.status}`);
+                    }
+                    const captureData = await captureResponse.json();
+                    if (!captureData.success) {
+                        throw new Error(captureData.error || "Failed to capture face data. Please try again.");
+                    }
+        
+                    const { encoding, frame } = captureData;
+        
+                    try {
+                        const userName = await getNameFromSpeech(faceNumber);
+                        if (userName) {
+                            addMessage(`Registering new user: ${userName}`, 'bot');
+                            await speak(`Registering new user: ${userName}`);
+        
+                            await registerUser(userName, encoding, frame);
+                        } else {
+                            addMessage(`No name provided for Person ${faceNumber}. Skipping registration.`, 'bot');
+                            await speak(`No name provided for Person ${faceNumber}. Skipping registration.`);
+                        }
+                    } catch (error) {
+                        addMessage(error.message, 'bot');
+                        await speak(error.message);
+                    }
+                }
+        
+            } catch (error) {
+                console.error("Face recognition error:", error);
+                addMessage(`Error detecting faces: ${error.message}`, 'bot');
+                await speak("Error detecting faces. Please try again.");
+            }
+            updateUIState('idle');
+        }
+
+        async function getNameFromSpeech(faceNumber) {
+            return new Promise((resolve, reject) => {
+                const speechRecognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+                speechRecognition.lang = "en-US";
+                speechRecognition.continuous = false;
+
+                speechRecognition.onresult = (event) => {
+                    const name = event.results[0][0].transcript.trim();
+                    addMessage(`You said: ${name}`, 'user');
+                    resolve(name);
+                };
+
+                speechRecognition.onerror = (event) => {
+                    console.error("Speech recognition error:", event.error);
+                    reject(new Error("Failed to recognize your name. Please try again."));
+                };
+
+                speechRecognition.onend = () => {
+                    isListening = false;
+                    updateUIState('idle');
+                };
+
+                updateUIState('listening');
+                addMessage(`Please say the name of person ${faceNumber}.`, 'bot');
+                speak(`Please say the name of person ${faceNumber}.`).then(() => {
+                    isListening = true;
+                    speechRecognition.start();
+                });
+            });
+        }
+
+        async function getWeather(city) {
+            const url = `http://127.0.0.1:5000/get_weather?city=${encodeURIComponent(city)}`;
+            try {
+                let response = await fetch(url);
+                let data = await response.json();
+                if (data.cod && data.cod !== 200) throw new Error(data.message || "Weather data not available.");
+                
+                const weatherDesc = data.weather[0].description.toLowerCase();
+                const weatherMessage = `Weather in ${city}: ${data.weather[0].description}, Temp: ${data.main.temp}°C`;
+                
+                // Trigger weather animation
+                showWeatherAnimation(weatherDesc);
+                
+                return weatherMessage;
+            } catch (error) {
+                console.error("Weather error:", error);
+                return `Failed to fetch weather data for ${city}: ${error.message}`;
+            }
+        }
+        
+        // New function to handle weather animations
+        function showWeatherAnimation(weatherDesc) {
+            const animationDiv = document.getElementById('weatherAnimation');
+            animationDiv.classList.remove('rain', 'snow', 'sunny', 'cloudy', 'active'); // Reset classes
+        
+            // Determine weather type
+            let weatherClass = '';
+            if (weatherDesc.includes('rain') || weatherDesc.includes('shower')) {
+                weatherClass = 'rain';
+            } else if (weatherDesc.includes('snow') || weatherDesc.includes('sleet')) {
+                weatherClass = 'snow';
+            } else if (weatherDesc.includes('sun') || weatherDesc.includes('clear')) {
+                weatherClass = 'sunny';
+            } else if (weatherDesc.includes('cloud')) {
+                weatherClass = 'cloudy';
+            }
+        
+            if (weatherClass) {
+                animationDiv.classList.add(weatherClass, 'active');
+                // Hide after 3 seconds
+                setTimeout(() => {
+                    animationDiv.classList.remove('active');
+                }, 3000);
+            }
+        }
+
+        async function getNews(category = "overall") {
+            const url = `http://127.0.0.1:5000/get_news?category=${encodeURIComponent(category)}`;
+            try {
+                let response = await fetch(url);
+                let data = await response.json();
+                if (!data.response) throw new Error("No response field in news data");
+                return data.response;
+            } catch (error) {
+                console.error("News error:", error);
+                return `Failed to fetch news: ${error.message}`;
+            }
+        }
+
+        async function getStock(symbol) {
+            const url = `http://127.0.0.1:5000/get_stock?symbol=${encodeURIComponent(symbol)}`;
+            try {
+                let response = await fetch(url);
+                let data = await response.json();
+                let stock = data["Time Series (5min)"];
+                if (!stock) throw new Error("No stock data found");
+                const latestTime = Object.keys(stock)[0];
+                const latestData = stock[latestTime];
+                return `Stock: ${symbol}, Price: ${latestData["4. close"]}`;
+            } catch (error) {
+                console.error("Stock error:", error);
+                return `Failed to fetch stock data for ${symbol}: ${error.message}`;
+            }
+        }
+
+        async function registerUser(name, encoding, frame) {
+            try {
+                const response = await fetch("/register_user", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ name, encoding, frame }),
+                    cache: "no-cache"
+                });
+                if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+                const data = await response.json();
+                console.log("Register user response:", data);
+                addMessage(data.response, 'bot');
+                await speak(data.response);
+            } catch (error) {
+                console.error("Error registering user:", error);
+                addMessage("Error registering user. Please try again.", 'bot');
+                await speak("Error registering user. Please try again.");
+            }
+        }
+
+        function cleanup() {
+            clearInterval(randomMovementInterval);
+            clearInterval(randomBlinkInterval);
+            clearInterval(lipSyncInterval);
+            clearInterval(stopwatchInterval);
+            if (window.currentHeadAnimation) clearInterval(window.currentHeadAnimation);
+            if (spotifyPlayer) {
+                spotifyPlayer.disconnect();
+            }
+            fetch("http://127.0.0.1:5000/stop_song", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({})
+            }).catch(error => console.error("Error stopping song on cleanup:", error));
+        }
+
+        window.addEventListener('beforeunload', cleanup);
+
+        init();
+    </script>
+</body>
+</html>

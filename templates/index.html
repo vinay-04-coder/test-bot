@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Select Your Chatbot</title>
+    <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+    <style>
+        /* Dark Theme Styles with Visual Effects */
+        body {
+            text-align: center;
+            font-family: Arial, sans-serif;
+            background: linear-gradient(-45deg, #1a1a2e, #16213e, #0f3460, #1b1b2f);
+            background-size: 400% 400%;
+            animation: gradientBG 10s ease infinite;
+            color: #ffffff;
+            margin: 0;
+            padding: 20px;
+            overflow: hidden;
+        }
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        
+        h1 {
+            margin-bottom: 20px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            text-shadow: 0px 0px 10px rgba(0, 123, 255, 0.8);
+        }
+        
+        .container {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            
+            flex-wrap: wrap;
+            margin-top: 20px;
+            position: relative;
+        }
+        
+        .avatar {
+            text-align: center;
+            background-color: #1e1e1e;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0px 4px 12px rgba(255, 255, 255, 0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            border: 2px solid transparent;
+        }
+        .avatar:hover {
+            transform: scale(1.05);
+            box-shadow: 0px 0px 15px rgba(0, 123, 255, 0.6);
+            border-color: rgba(0, 123, 255, 0.8);
+        }
+        
+        model-viewer {
+            width: 250px;
+            height: 375px;
+            background-color: #222;
+            border-radius: 10px;
+        }
+        
+        p {
+            font-size: 1.3em;
+            margin: 12px 0;
+            font-weight: bold;
+            text-shadow: 0px 0px 5px rgba(255, 255, 255, 0.3);
+        }
+        
+        button {
+            margin-top: 8px;
+            padding: 10px 22px;
+            border: none;
+            cursor: pointer;
+            background-color: #007bff;
+            color: white;
+            border-radius: 6px;
+            font-size: 1.1em;
+            transition: 0.3s;
+            box-shadow: 0px 4px 10px rgba(0, 123, 255, 0.5);
+        }
+        button:hover {
+            background-color: #0056b3;
+            transform: scale(1.1);
+            box-shadow: 0px 4px 15px rgba(0, 123, 255, 0.9);
+        }
+
+        /* Floating Particles */
+        .particles {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: -1;
+        }
+        .particle {
+            position: absolute;
+            background-color: rgba(0, 123, 255, 0.6);
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            opacity: 0.8;
+            animation: floatParticles 10s linear infinite;
+        }
+        @keyframes floatParticles {
+            0% { transform: translateY(100vh) scale(0.5); opacity: 1; }
+            100% { transform: translateY(-10vh) scale(1.5); opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+    <h1>Choose Your Chatbot Avatar</h1>
+    <div class="particles"></div>
+    <div class="container">
+        <!-- Avatar 1 (Ava) -->
+        <div class="avatar">
+            <model-viewer src="https://models.readyplayer.me/67e10f66e7aa1f5caf672464.glb" 
+                alt="Ava" disable-tap></model-viewer>
+            <p>Ava</p>
+            <button onclick="window.location.href='/ava'">Select Ava</button>
+        </div>
+        
+        <!-- Avatar 2 (Jessica) -->
+        <div class="avatar">
+            <model-viewer src="https://models.readyplayer.me/67e10fbb380f3de290f227c1.glb" 
+                alt="Jessica" disable-tap></model-viewer>
+            <p>Jessica</p>
+            <button onclick="window.location.href='/jessica'">Select Jessica</button>
+        </div>
+
+        <!-- Avatar 3 (Kevin) -->
+        <div class="avatar">
+            <model-viewer src="https://models.readyplayer.me/67e1103fbe3335bbacdca156.glb" 
+                alt="Kevin" disable-tap></model-viewer>
+            <p>Kevin</p>
+            <button onclick="window.location.href='/kevin'">Select Kevin</button>
+        </div>
+
+         <!-- Avatar 4 (Peter) -->
+         <div class="avatar">
+            <model-viewer src="https://models.readyplayer.me/67e1052a79ac9bcf819b704f.glb" 
+                alt="Peter" disable-tap></model-viewer>
+            <p>Peter</p>
+            <button onclick="window.location.href='/peter'">Select Peter</button>
+        </div>
+    </div>
+    
+    <script>
+        // Generate floating particles
+        document.addEventListener("DOMContentLoaded", function() {
+            const particleContainer = document.querySelector(".particles");
+            for (let i = 0; i < 30; i++) {
+                let particle = document.createElement("div");
+                particle.classList.add("particle");
+                particle.style.left = Math.random() * 100 + "vw";
+                particle.style.animationDuration = (Math.random() * 5 + 5) + "s";
+                particleContainer.appendChild(particle);
+            }
+        });
+    </script>
+</body>
+</html>
